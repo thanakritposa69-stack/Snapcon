@@ -4,13 +4,14 @@ import time
 from datetime import datetime
 import plotly.express as px
 import random
+import io
 
 # การตั้งค่าหน้ากระดาษ
 st.set_page_config(
-    page_title="Snapcon",
+    page_title="Snapcon Control Center",
     page_icon="🔌",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # --- SESSION STATE ---
@@ -24,15 +25,27 @@ if 'health_scores' not in st.session_state:
 if 'lang' not in st.session_state:
     st.session_state.lang = 'TH'
 
-# --- CONFIGURATION (INPUTS) ---
-# ค่าเหล่านี้สามารถปรับแต่งได้จาก Sidebar เพื่อเปลี่ยน Output
-if 'config' not in st.session_state:
-    st.session_state.config = {
-        'carbon_factor': 0.0072,  # kgCO2e per unit
-        'energy_factor': 0.0120,  # kWh per unit
-        'health_decay': 0.05,     # Speed of health reduction
-        'currency_symbol': '฿'
-    }
+# --- SIDEBAR: PARAMETER CONTROL ---
+with st.sidebar:
+    st.markdown(f"### ⚙️ System Configuration")
+    st.divider()
+    
+    st.markdown("**Production Settings**")
+    sim_speed = st.slider("Simulation Speed (Seconds)", 0.1, 2.0, 0.4, help="ความเร็วในการ Refresh หน้าจอ")
+    prod_chance = st.slider("Production Rate (%)", 10, 100, 60, help="โอกาสที่จะเกิดผลผลิตในแต่ละรอบ") / 100
+    
+    st.divider()
+    st.markdown("**Health & Maintenance**")
+    degrade_chance = st.slider("Degradation Risk (%)", 0, 20, 5, help="โอกาสที่สุขภาพเครื่องจักรจะลดลง") / 100
+    degrade_step = st.number_input("Health Drop per Unit", 0.01, 1.0, 0.2)
+    
+    st.divider()
+    st.markdown("**Eco-Metrics Factor**")
+    carbon_factor = st.number_input("Carbon Factor (kgCO2e/Unit)", 0.0001, 0.1, 0.0072, format="%.4f")
+    energy_factor = st.number_input("Energy Factor (kWh/Unit)", 0.0001, 0.1, 0.0120, format="%.4f")
+    
+    st.divider()
+    target_goal = st.number_input("Production Target (Units)", 100, 100000, 5000)
 
 # ข้อมูลข้อความ
 text = {
@@ -50,8 +63,7 @@ text = {
         'kpi_carbon': 'คาร์บอนฟุตพริ้นท์',
         'kpi_energy': 'พลังงานที่ใช้',
         'kpi_health': 'สุขภาพระบบเฉลี่ย',
-        'csv_btn': 'ดาวน์โหลดรายงาน CSV แบบละเอียด',
-        'settings': 'ตั้งค่าระบบ (Inputs)'
+        'csv_btn': 'ดาวน์โหลดรายงาน CSV แบบละเอียด'
     },
     'EN': {
         'title': 'SNAPCON',
@@ -67,8 +79,7 @@ text = {
         'kpi_carbon': 'Carbon Footprint',
         'kpi_energy': 'Energy Usage',
         'kpi_health': 'Avg. Health',
-        'csv_btn': 'Download Detailed CSV Report',
-        'settings': 'System Settings (Inputs)'
+        'csv_btn': 'Download Detailed CSV Report'
     }
 }
 
@@ -77,66 +88,39 @@ L = text[st.session_state.lang]
 # --- SIMULATION LOGIC ---
 if st.session_state.is_running:
     for i in range(num_modules):
-        if random.random() > 0.6:
+        if random.random() < prod_chance:
             st.session_state.prod_counts[i] += 1
-            if random.random() > 0.95:
-                decay = st.session_state.config['health_decay']
-                st.session_state.health_scores[i] = max(0.0, st.session_state.health_scores[i] - decay)
+            if random.random() < degrade_chance:
+                st.session_state.health_scores[i] = max(0.0, st.session_state.health_scores[i] - degrade_step)
     time.sleep(0.1)
 
 # --- CSS Styling ---
 st.markdown(f"""
     <style>
-    .stApp {{ background-color: #0d1117; color: #e6edf3; }}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap');
+    .stApp {{ background-color: #0d1117; color: #e6edf3; font-family: 'Inter', sans-serif; }}
     
-    /* ปุ่มคำสั่งทั้งหมดให้เหมือนกัน (Uniform Design) */
     div.stButton > button {{
-        width: 100% !important;
-        border-radius: 8px !important;
+        width: 100% !important; border-radius: 8px !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
         background-color: rgba(255,255,255,0.05) !important;
-        color: white !important;
-        font-weight: 600 !important;
-        height: 48px !important;
-        transition: all 0.3s ease !important;
+        color: white !important; font-weight: 600 !important; height: 48px !important;
     }}
-    
-    div.stButton > button:hover {{
-        background-color: rgba(255,255,255,0.15) !important;
-        border: 1px solid rgba(34, 211, 238, 0.5) !important;
-    }}
+    div.stButton > button:hover {{ background-color: rgba(255,255,255,0.15) !important; }}
 
     .metric-card {{
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 1.5rem;
-        position: relative;
+        background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 1.5rem;
+        position: relative; overflow: hidden;
     }}
-    
-    .status-badge {{
-        background: rgba(22, 27, 34, 0.8);
-        border: 1px solid #30363d;
-        border-radius: 8px;
-        padding: 8px 16px;
-    }}
+    .metric-card::before {{ content: ""; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #22d3ee; }}
 
-    .status-dot {{
-        height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 10px;
-        background-color: {"#10b981" if st.session_state.is_running else "#ef4444"};
-        box-shadow: 0 0 12px {"#10b981" if st.session_state.is_running else "#ef4444"};
-    }}
+    .status-badge {{ background: #1c2128; border: 1px solid #30363d; border-radius: 8px; padding: 8px 16px; display: inline-flex; align-items: center; }}
+    .status-dot {{ height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 10px; background-color: {"#10b981" if st.session_state.is_running else "#ef4444"}; }}
+
+    .node-card {{ background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 22px; text-align: center; margin-top: 10px; }}
+    .node-number {{ font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: #ffffff; }}
     </style>
     """, unsafe_allow_html=True)
-
-# --- SIDEBAR (INPUT EDITING) ---
-with st.sidebar:
-    st.header(f"⚙️ {L['settings']}")
-    st.session_state.config['carbon_factor'] = st.number_input("Carbon Factor (kg/unit)", value=st.session_state.config['carbon_factor'], format="%.4f")
-    st.session_state.config['energy_factor'] = st.number_input("Energy Factor (kWh/unit)", value=st.session_state.config['energy_factor'], format="%.4f")
-    st.session_state.config['health_decay'] = st.slider("Maintenance Sensitivity", 0.01, 1.0, st.session_state.config['health_decay'])
-    st.markdown("---")
-    st.caption("การปรับค่าในหน้านี้จะส่งผลต่อการคำนวณ Output บน Dashboard ทันที")
 
 # --- HEADER SECTION ---
 h_col1, h_col2 = st.columns([3, 1])
@@ -147,7 +131,7 @@ with h_col1:
                 <span style="color:black; font-weight:900; font-size:1.3rem;">S</span>
             </div>
             <div>
-                <h2 style="margin:0; font-weight:800; color:white;">{L['title']}</h2>
+                <h2 style="margin:0; letter-spacing:-1px; font-weight:800; color:white;">{L['title']}</h2>
                 <p style="margin:0; color:#94a3b8; font-size:0.85rem;">{L['subtitle']}</p>
             </div>
         </div>
@@ -157,7 +141,7 @@ with h_col2:
         <div style="text-align:right;">
             <div class="status-badge">
                 <span class="status-dot"></span>
-                <span style="font-size:0.85rem; font-weight:600;">{L['running'] if st.session_state.is_running else L['idle']}</span>
+                <span style="font-size:0.85rem; font-weight:600; color:#c9d1d9;">{L['running'] if st.session_state.is_running else L['idle']}</span>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -190,22 +174,26 @@ with c5:
 # --- KPI CALCULATION ---
 total_p = sum(st.session_state.prod_counts)
 avg_h = sum(st.session_state.health_scores) / num_modules
-total_carbon = total_p * st.session_state.config['carbon_factor']
-total_energy = total_p * st.session_state.config['energy_factor']
+progress = min(1.0, total_p / target_goal)
+
+# --- PROGRESS BAR ---
+st.markdown(f"<div style='color:#94a3b8; font-size:0.75rem; margin-bottom:5px;'>PRODUCTION TARGET PROGRESS: {total_p:,} / {target_goal:,}</div>", unsafe_allow_html=True)
+st.progress(progress)
 
 # --- DISPLAY AREA ---
 if not show_adv:
+    # Main Dashboard Metrics
     k1, k2, k3, k4 = st.columns(4)
     with k1: 
-        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;">{L["kpi_total"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{total_p:,}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;margin-bottom:8px;">{L["kpi_total"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{total_p:,}</div><div style="color:#10b981;font-size:0.7rem;margin-top:4px;">Units Generated</div></div>', unsafe_allow_html=True)
     with k2:
-        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;">{L["kpi_carbon"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{total_carbon:.2f}</div><div style="color:#f87171;font-size:0.7rem;">kgCO2e</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;margin-bottom:8px;">{L["kpi_carbon"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{total_p * carbon_factor:.3f}</div><div style="color:#94a3b8;font-size:0.7rem;margin-top:4px;">kgCO2e Total</div></div>', unsafe_allow_html=True)
     with k3:
-        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;">{L["kpi_energy"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{total_energy:.2f}</div><div style="color:#f87171;font-size:0.7rem;">kWh</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;margin-bottom:8px;">{L["kpi_energy"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{total_p * energy_factor:.2f}</div><div style="color:#94a3b8;font-size:0.7rem;margin-top:4px;">kWh Accumulated</div></div>', unsafe_allow_html=True)
     with k4:
-        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;">{L["kpi_health"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{avg_h:.1f}%</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div style="color:#8b949e;font-size:0.75rem;margin-bottom:8px;">{L["kpi_health"]}</div><div style="font-size:2.2rem;font-weight:800;color:#e6edf3;">{avg_h:.1f}%</div><div style="color:#10b981;font-size:0.7rem;margin-top:4px;">Healthy Status</div></div>', unsafe_allow_html=True)
 
-    st.markdown("<br><b style='color:#58a6ff;'>🌐 Hardware Nodes Status</b>", unsafe_allow_html=True)
+    st.markdown("<br><div style='display:flex; align-items:center; gap:10px;'><span style='font-size:1.2rem;'>🌐</span><b style='color:#58a6ff;'>Node Network Status</b></div>", unsafe_allow_html=True)
     for r in range(2):
         row_cols = st.columns(5)
         for c in range(5):
@@ -214,27 +202,36 @@ if not show_adv:
             h_color = "#10b981" if health > 90 else ("#f59e0b" if health > 70 else "#ef4444")
             with row_cols[c]:
                 st.markdown(f"""
-                <div style="background:#161b22; border:1px solid #30363d; border-radius:10px; padding:20px; text-align:center; margin-top:10px;">
-                    <div style="font-size:0.65rem; color:#8b949e;">Module #{idx+1:02d}</div>
-                    <div style="font-size:1.8rem; font-weight:900; color:white;">{st.session_state.prod_counts[idx]}</div>
-                    <div style="font-size:0.7rem; color:{h_color};">● {health:.1f}%</div>
+                <div class="node-card">
+                    <div style="font-size:0.65rem; color:#8b949e; margin-bottom:12px; text-transform:uppercase; letter-spacing:1.2px;">Node-{idx+1:02d}</div>
+                    <div class="node-number">{st.session_state.prod_counts[idx]}</div>
+                    <div style="height:3px; width:36px; background:{h_color}; margin: 12px auto; border-radius:2px;"></div>
+                    <div style="font-size:0.75rem; color:{h_color}; font-weight:600;">{health:.1f}% OK</div>
                 </div>
                 """, unsafe_allow_html=True)
 else:
-    st.markdown("### 📊 Enterprise Analytics Report")
+    # Advanced Report Section
+    st.markdown("### 📊 Advanced Analytics")
     report_df = pd.DataFrame({
         "Module_ID": [f"MOD-{i+1:02d}" for i in range(10)],
         "Production": st.session_state.prod_counts,
-        "Health_%": st.session_state.health_scores,
-        "Energy_kWh": [round(c * st.session_state.config['energy_factor'], 4) for c in st.session_state.prod_counts],
-        "Timestamp": datetime.now().strftime("%H:%M:%S")
+        "Health": st.session_state.health_scores,
+        "Energy_kWh": [round(c * energy_factor, 4) for c in st.session_state.prod_counts],
+        "Carbon_kg": [round(c * carbon_factor, 4) for c in st.session_state.prod_counts]
     })
     
-    st.dataframe(report_df, use_container_width=True)
-    csv = report_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button(f"📥 {L['csv_btn']}", data=csv, file_name="report.csv", mime="text/csv")
+    col_a, col_b = st.columns([1, 2])
+    with col_a:
+        st.dataframe(report_df, hide_index=True, use_container_width=True)
+        csv = report_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(label=f"📥 {L['csv_btn']}", data=csv, file_name="snapcon_data.csv", mime="text/csv")
+
+    with col_b:
+        fig = px.bar(report_df, x="Module_ID", y="Production", color="Health", color_continuous_scale="RdYlGn")
+        fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig, use_container_width=True)
 
 # --- AUTO REFRESH ---
 if st.session_state.is_running:
-    time.sleep(0.4)
+    time.sleep(sim_speed)
     st.rerun()
