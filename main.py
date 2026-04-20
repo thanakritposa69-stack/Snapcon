@@ -3,102 +3,112 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# ==========================================
-# 1. การตั้งค่าหน้าจอหลัก (Page Config)
-# ==========================================
-st.set_page_config(page_title="Personal Eng-Manager Dashboard", layout="wide")
-st.title("📊 Engineering Workload & Resource Dashboard")
-st.markdown("ระบบมอนิเตอร์สถานะโปรเจกต์และโหลดงานส่วนตัว (Skunkworks Project)")
-st.markdown("---")
+# --- CONFIG & STYLING ---
+st.set_page_config(page_title="Engineering Gantt Dashboard", layout="wide")
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+    """, unsafe_allow_html=True)
 
-# ==========================================
-# 2. จำลองข้อมูลจากตาราง Excel
-# ==========================================
-# แปลง Timeline (1-10) ให้เป็นวันที่จริง เพื่อให้วาดกราฟ Gantt ได้
+# --- 1. DATA PREPARATION ---
 today = datetime.today()
-
 raw_data = [
-    {"Project": "A", "Start_Day": 1, "End_Day": 2, "Assignee": "นาย ก"},
-    {"Project": "A", "Start_Day": 2, "End_Day": 3, "Assignee": "นาย ข"},
-    {"Project": "A", "Start_Day": 3, "End_Day": 4, "Assignee": "นาย จ"},
-    {"Project": "B", "Start_Day": 2, "End_Day": 3, "Assignee": "นาย จ"},
-    {"Project": "B", "Start_Day": 3, "End_Day": 4, "Assignee": "นาย ง"},
-    {"Project": "B", "Start_Day": 4, "End_Day": 6, "Assignee": "นาย ค"},
-    {"Project": "C", "Start_Day": 5, "End_Day": 7, "Assignee": "นาย ข"},
-    {"Project": "C", "Start_Day": 7, "End_Day": 9, "Assignee": "นาย ง"},
-    {"Project": "D", "Start_Day": 1, "End_Day": 5, "Assignee": "นาย ค"},
-    {"Project": "E", "Start_Day": 2, "End_Day": 6, "Assignee": "นาย ก"},
-    {"Project": "F", "Start_Day": 4, "End_Day": 10,"Assignee": "นาย จ"},
+    {"Project": "Project A", "Start_Day": 1, "End_Day": 2, "Assignee": "นาย ก"},
+    {"Project": "Project A", "Start_Day": 2, "End_Day": 3, "Assignee": "นาย ข"},
+    {"Project": "Project A", "Start_Day": 3, "End_Day": 4, "Assignee": "นาย จ"},
+    {"Project": "Project B", "Start_Day": 2, "End_Day": 3, "Assignee": "นาย จ"},
+    {"Project": "Project B", "Start_Day": 3, "End_Day": 4, "Assignee": "นาย ง"},
+    {"Project": "Project B", "Start_Day": 4, "End_Day": 6, "Assignee": "นาย ค"},
+    {"Project": "Project C", "Start_Day": 5, "End_Day": 7, "Assignee": "นาย ข"},
+    {"Project": "Project C", "Start_Day": 7, "End_Day": 9, "Assignee": "นาย ง"},
+    {"Project": "Project D", "Start_Day": 1, "End_Day": 5, "Assignee": "นาย ค"},
+    {"Project": "Project E", "Start_Day": 2, "End_Day": 6, "Assignee": "นาย ก"},
+    {"Project": "Project F", "Start_Day": 4, "End_Day": 10, "Assignee": "นาย จ"},
 ]
 
 df = pd.DataFrame(raw_data)
-# แปลง Day เป็น วันที่จริงสำหรับการแสดงผลใน Timeline
 df["Start"] = df["Start_Day"].apply(lambda x: today + timedelta(days=x-1))
-df["End"] = df["End_Day"].apply(lambda x: today + timedelta(days=x-1))
-df["Task_Duration"] = df["End_Day"] - df["Start_Day"]
+df["End"] = df["End_Day"].apply(lambda x: today + timedelta(days=x)) # เพิ่ม 1 วันเพื่อให้เห็นจบวันนั้นๆ
+df["Duration"] = df["End_Day"] - df["Start_Day"]
 
-# ==========================================
-# 3. ส่วน KPI สรุปผลด้านบน (Top Metrics)
-# ==========================================
-total_projects = df["Project"].nunique()
-total_active_tasks = len(df)
-# คำนวณหาคนที่รับงานเยอะที่สุด
-busiest_person = df.groupby("Assignee")["Task_Duration"].sum().idxmax()
+# --- 2. SIDEBAR FILTER ---
+st.sidebar.header("🛠 Control Panel")
+selected_assignee = st.sidebar.multiselect("กรองตามรายชื่อพนักงาน:", options=df["Assignee"].unique(), default=df["Assignee"].unique())
+filtered_df = df[df["Assignee"].isin(selected_assignee)]
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Active Projects (โปรเจกต์ที่รันอยู่)", f"{total_projects} โปรเจกต์")
-col2.metric("Total Tasks (งานย่อยทั้งหมด)", f"{total_active_tasks} งาน")
-col3.metric("🚨 High Workload Alert (คนโหลดสุด)", f"{busiest_person}")
+# --- 3. TOP METRICS ---
+st.title("📌 Engineering Project Schedule")
+st.caption(f"อัปเดตล่าสุด: {today.strftime('%d %B %Y')}")
 
-st.markdown("<br>", unsafe_allow_html=True)
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("โปรเจกต์ทั้งหมด", df["Project"].nunique())
+m2.metric("จำนวนงาน (Tasks)", len(filtered_df))
 
-# ==========================================
-# 4. กราฟ Gantt Chart (มองภาพรวม Timeline)
-# ==========================================
-st.subheader("📅 Project Timeline (แยกสีตามพนักงาน)")
-fig_timeline = px.timeline(
-    df, 
+# คำนวณ Load นาย จ (ตัวอย่างการเฝ้าระวัง)
+p_load = df.groupby("Assignee")["Duration"].sum()
+m3.metric("โหลดงานเฉลี่ย", f"{p_load.mean():.1f} วัน/คน")
+m4.metric("Busiest Person", p_load.idxmax(), delta="Overloaded", delta_color="inverse")
+
+st.markdown("---")
+
+# --- 4. GANTT CHART (BEAUTIFIED) ---
+st.subheader("🗓 แผนผังการดำเนินงาน (Gantt Chart)")
+
+# เลือกใช้สี Pastel
+color_map = {
+    "นาย ก": "#8ECAE6", "นาย ข": "#219EBC", 
+    "นาย ค": "#FFB703", "นาย ง": "#FB8500", "นาย จ": "#FF006E"
+}
+
+fig = px.timeline(
+    filtered_df, 
     x_start="Start", 
     x_end="End", 
     y="Project", 
     color="Assignee",
-    hover_name="Assignee",
-    category_orders={"Project": ["F", "E", "D", "C", "B", "A"]} # เรียงจากบนลงล่าง
+    text="Assignee",
+    color_discrete_map=color_map,
+    hover_data={"Start": "|%d %b", "End": "|%d %b", "Duration": True}
 )
-# ปรับแต่งกราฟให้ดูง่ายขึ้น
-fig_timeline.update_yaxes(autorange="reversed") 
-st.plotly_chart(fig_timeline, use_container_width=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+fig.update_layout(
+    xaxis_title="Timeline",
+    yaxis_title="",
+    height=450,
+    margin=dict(l=20, r=20, t=20, b=20),
+    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="rgba(0,0,0,0)",
+    showlegend=True,
+    legend_title_text="พนักงาน",
+    font=dict(family="Arial", size=12)
+)
 
-# ==========================================
-# 5. กราฟวิเคราะห์ Resource (กราฟแท่งคู่ด้านล่าง)
-# ==========================================
-col_left, col_right = st.columns(2)
+# เพิ่มเส้น Grid ให้ดูง่าย
+fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#f0f0f0')
+fig.update_yaxes(autorange="reversed", showgrid=True, gridwidth=1, gridcolor='#f0f0f0')
 
-with col_left:
-    st.subheader("👨‍🔧 ปริมาณงานรายบุคคล (Workload per Person)")
-    # รวมจำนวนวันทำงานของแต่ละคน
-    workload_df = df.groupby("Assignee")["Task_Duration"].sum().reset_index()
-    fig_workload = px.bar(
-        workload_df, 
-        x="Assignee", 
-        y="Task_Duration", 
-        text="Task_Duration",
-        labels={"Task_Duration": "ปริมาณงาน (วันรวม)", "Assignee": "พนักงาน"},
-        color="Assignee"
-    )
-    # ใส่เส้นขีดจำกัด (Red Line)
-    fig_workload.add_hline(y=5, line_dash="dot", annotation_text="ขีดจำกัดปกติ (Overload Line)", annotation_position="top left", line_color="red")
-    st.plotly_chart(fig_workload, use_container_width=True)
+# ทำให้แท่งกราฟมนและมีช่องไฟ
+fig.update_traces(marker_line_color='rgb(255,255,255)', marker_line_width=1.5, opacity=0.85)
 
-with col_right:
-    st.subheader("📦 สัดส่วนงานแต่ละโปรเจกต์ (Task by Project)")
-    fig_project_dist = px.pie(
-        df, 
-        names="Project", 
-        values="Task_Duration", 
-        hole=0.4, # ทำเป็น Donut Chart ให้ดูทันสมัย
-        color="Project"
-    )
-    st.plotly_chart(fig_project_dist, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
+
+# --- 5. WORKLOAD ANALYSIS TABLE ---
+st.markdown("---")
+col_a, col_b = st.columns([1, 1])
+
+with col_a:
+    st.subheader("📊 ตารางสรุปโหลดงาน (Workload Summary)")
+    summary_table = filtered_df.groupby("Assignee").agg(
+        จำนวนงาน=('Project', 'count'),
+        ระยะเวลารวม_วัน=('Duration', 'sum')
+    ).sort_values("ระยะเวลารวม_วัน", ascending=False)
+    st.dataframe(summary_table, use_container_width=True)
+
+with col_b:
+    st.subheader("⚠️ การวิเคราะห์ทรัพยากร")
+    if p_load.max() > 7:
+        st.error(f"ตรวจพบปัญหา: **{p_load.idxmax()}** มีงานสะสมมากเกินไป อาจส่งผลต่อคุณภาพงาน")
+    else:
+        st.success("การกระจายงานอยู่ในระดับที่เหมาะสม")
